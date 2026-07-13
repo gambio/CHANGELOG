@@ -1,0 +1,61 @@
+name: Deploy changelog Pages
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build index.json + site
+        run: python3 scripts/build_index.py
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # The app is only used to notify gambio.github.io (developers.gambio.de) so it
+      # rebuilds its release-notes pages. Skips gracefully while not configured yet.
+      - name: Mint token for developers.gambio.de dispatch
+        id: app-token
+        if: ${{ vars.DEVELOPERS_SITE_APP_ID != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DEVELOPERS_SITE_APP_ID }}
+          private-key: ${{ secrets.DEVELOPERS_SITE_APP_PRIVATE_KEY }}
+          owner: gambio
+          repositories: gambio.github.io
+
+      - name: Trigger developers.gambio.de rebuild
+        if: ${{ steps.app-token.outputs.token != '' }}
+        run: |
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ steps.app-token.outputs.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/gambio/gambio.github.io/dispatches \
+            -d '{"event_type":"changelog-updated"}'
