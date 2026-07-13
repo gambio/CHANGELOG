@@ -1,0 +1,9 @@
+# IDE / editor
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# generated (built by CI, deployed to Pages only)
+index.json
